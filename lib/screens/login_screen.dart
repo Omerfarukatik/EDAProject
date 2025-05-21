@@ -3,6 +3,7 @@ import 'register_screen.dart';
 import '../widgets/custom_textfield.dart';
 import 'parent_screen.dart';
 import 'child_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -103,46 +104,68 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildSignInButton() {
     return InkWell(
-      onTap: () {
+      onTap: () async {
         if (_formKey.currentState!.validate()) {
-          showDialog(
-            context: context,
-            builder: (context) {
-              return AlertDialog(
-                title: Text('Rol Seç'),
-                content: Text('Bu hesapla nasıl giriş yapmak istiyorsunuz?'),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) => ParentScreen(
-                                username: _usernameController.text,
-                              ),
-                        ),
-                      );
-                    },
-                    child: Text('Ebeveyn'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => ChildScreen()),
-                      );
-                    },
-                    child: Text('Çocuk'),
-                  ),
-                ],
-              );
-            },
-          );
+          try {
+            await FirebaseAuth.instance.signInWithEmailAndPassword(
+              email: _usernameController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
+
+            // Rol seçme dialog'u başarılı giriş sonrası çalışır
+            showDialog(
+              context: context,
+              builder: (context) {
+                return AlertDialog(
+                  title: Text('Rol Seç'),
+                  content: Text('Bu hesapla nasıl giriş yapmak istiyorsunuz?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => ParentScreen(
+                                  username: _usernameController.text,
+                                ),
+                          ),
+                        );
+                      },
+                      child: Text('Ebeveyn'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChildScreen(),
+                          ),
+                        );
+                      },
+                      child: Text('Çocuk'),
+                    ),
+                  ],
+                );
+              },
+            );
+          } on FirebaseAuthException catch (e) {
+            String message = 'Giriş başarısız';
+            if (e.code == 'user-not-found') {
+              message = 'Bu e-posta ile bir kullanıcı bulunamadı';
+            } else if (e.code == 'wrong-password') {
+              message = 'Şifre yanlış';
+            }
+
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(message)));
+          }
         }
       },
+
       borderRadius: BorderRadius.circular(30),
       child: Container(
         decoration: BoxDecoration(

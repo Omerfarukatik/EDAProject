@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_textfield.dart';
 import 'login_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -75,7 +76,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'E-posta gerekli';
-                    } else if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                    } else if (!RegExp(
+                      r'^[^@]+@[^@]+\.[^@]+',
+                    ).hasMatch(value)) {
                       return 'Geçerli bir e-posta girin';
                     }
                     return null;
@@ -100,15 +103,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // 🔘 Buton
                 InkWell(
-                  onTap: () {
+                  onTap: () async {
                     if (_formKey.currentState!.validate()) {
-                      // TODO: Firebase Auth ile kayıt işlemi burada yapılacak
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LoginScreen(),
-                        ),
-                      );
+                      try {
+                        await FirebaseAuth.instance
+                            .createUserWithEmailAndPassword(
+                              email: _emailController.text.trim(),
+                              password: _passwordController.text.trim(),
+                            );
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Kayıt başarılı, giriş sayfasına yönlendiriliyorsunuz',
+                            ),
+                          ),
+                        );
+
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => LoginScreen(),
+                          ),
+                        );
+                      } on FirebaseAuthException catch (e) {
+                        String message = 'Bir hata oluştu';
+                        if (e.code == 'email-already-in-use') {
+                          message = 'Bu e-posta zaten kullanılıyor';
+                        } else if (e.code == 'weak-password') {
+                          message = 'Şifre çok zayıf';
+                        }
+
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
                     }
                   },
                   borderRadius: BorderRadius.circular(30),
@@ -134,7 +163,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         SizedBox(width: 10),
-                        Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+                        Icon(
+                          Icons.arrow_forward,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ],
                     ),
                   ),

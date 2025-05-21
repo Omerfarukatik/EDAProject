@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "956844075381",
+    "project_id": "edaapp-581a3",
+    "storage_bucket": "edaapp-581a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:956844075381:android:8c0f75ba14625dad764b3c",
+        "android_client_info": {
+          "package_name": "com.example.edadeneme"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCbQ6Etnfs4HNb9yDkMz9ZxkwFYhnPmZPY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
