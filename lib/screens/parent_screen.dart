@@ -25,8 +25,8 @@ class _ParentScreenState extends State<ParentScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.deepPurple.shade100,
         onPressed: () {
-          AddChildModal.show(context, (name, avatar, _, __, ___) {
-            // setState() artık gerekmez çünkü veriler Firestore'dan geliyor
+          AddChildModal.show(context, (id, name, avatar, _, __) {
+            // Firestore verisi otomatik güncelleneceği için ekstra işleme gerek yok.
           });
         },
         child: Icon(Icons.add, color: Colors.deepPurple),
@@ -36,17 +36,35 @@ class _ParentScreenState extends State<ParentScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(height: 20),
-            Center(
-              child: Text(
-                'E D A\n(Ebeveyn)',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Times New Roman',
-                  color: Colors.indigo.shade900,
+            Stack(
+              children: [
+                Center(
+                  child: Text(
+                    'E D A\n(Ebeveyn)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Times New Roman',
+                      color: Colors.indigo.shade900,
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  top: 0,
+                  right: 10,
+                  child: IconButton(
+                    icon: Icon(Icons.logout, color: Colors.grey.shade800),
+                    onPressed: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => LoginScreen()),
+                        (route) => false,
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 20),
             Padding(
@@ -109,6 +127,7 @@ class _ParentScreenState extends State<ParentScreen> {
                               final child = children[index];
                               final name = child['name'];
                               final avatar = child['avatar'];
+                              final id = child.id;
 
                               return GestureDetector(
                                 onTap: () {
@@ -120,6 +139,7 @@ class _ParentScreenState extends State<ParentScreen> {
                                             childName: name,
                                             avatarPath: avatar,
                                             parentUsername: widget.username,
+                                            childId: id,
                                           ),
                                     ),
                                   );
@@ -164,19 +184,6 @@ class _ParentScreenState extends State<ParentScreen> {
                     ),
                   ],
                 ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.topRight,
-              child: IconButton(
-                icon: Icon(Icons.logout, color: Colors.grey.shade800),
-                onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()),
-                    (route) => false,
-                  );
-                },
               ),
             ),
           ],

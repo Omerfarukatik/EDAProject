@@ -1,196 +1,132 @@
-import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:android_intent_plus/android_intent.dart';
 
 class UsageScreen extends StatefulWidget {
+  final String childId;
+  const UsageScreen({required this.childId});
+
   @override
-  _UsageScreenState createState() => _UsageScreenState();
+  State<UsageScreen> createState() => _UsageScreenState();
 }
 
 class _UsageScreenState extends State<UsageScreen> {
-  static const platform = MethodChannel('com.ekranhareketi/usage');
-
-  Duration totalDuration = Duration.zero;
-  List<Map<String, dynamic>> appUsages = [];
-
   String selectedRange = 'Günlük';
   final List<String> ranges = ['Günlük', 'Haftalık', 'Aylık'];
-
-  Timer? _timer;
+  List<Map<String, dynamic>> entries = [];
+  Duration totalDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    fetchUsageData(selectedRange);
-    _timer = Timer.periodic(
-      Duration(minutes: 15),
-      (_) => fetchUsageData(selectedRange),
-    );
+    fetchUsageData();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  Future<void> fetchUsageData() async {
+    final parentId = FirebaseAuth.instance.currentUser?.uid;
+    if (parentId == null) return;
 
-  Future<void> openUsageAccessSettings() async {
-    final intent = AndroidIntent(
-      action: 'android.settings.USAGE_ACCESS_SETTINGS',
-    );
-    await intent.launch();
-  }
+    final now = DateTime.now();
+    final cutoff =
+        selectedRange == 'Günlük'
+            ? now.subtract(Duration(days: 1))
+            : selectedRange == 'Haftalık'
+            ? now.subtract(Duration(days: 7))
+            : now.subtract(Duration(days: 30));
 
-  Future<void> fetchUsageData(String filter) async {
-    try {
-      final result = await platform.invokeMethod('getUsageStats', {
-        "range": filter,
+    final query =
+        await FirebaseFirestore.instance
+            .collection('parents')
+            .doc(parentId)
+            .collection('children')
+            .doc(widget.childId)
+            .collection('screentime')
+            .where('timestamp', isGreaterThanOrEqualTo: cutoff)
+            .orderBy('timestamp', descending: true)
+            .get();
+
+    int totalMinutes = 0;
+    final fetched = <Map<String, dynamic>>[];
+
+    for (final doc in query.docs) {
+      final data = doc.data();
+      final timestamp = (data['timestamp'] as Timestamp?)?.toDate();
+      final appName = data['appName'] ?? 'Bilinmeyen';
+      final minutes = (data['duration_minutes'] as num?)?.toInt() ?? 0;
+      final icon = data['icon'] ?? '';
+
+      totalMinutes += minutes;
+
+      fetched.add({
+        'appName': appName,
+        'minutes': minutes,
+        'timestamp': timestamp,
+        'icon': icon,
       });
-      final totalMs = (result['totalTime'] as num).toInt();
-      final appsRaw = List.from(result['apps']);
-      final List<Map<String, dynamic>> apps =
-          appsRaw.map((item) {
-            return {
-              "appName": item["appName"] as String,
-              "duration": (item["duration"] as num).toInt(),
-              "icon": item["icon"] as String,
-            };
-          }).toList();
-
-      setState(() {
-        totalDuration = Duration(milliseconds: totalMs);
-        appUsages = apps;
-      });
-    } catch (e) {
-      print("Veri alınamadı: $e");
     }
+
+    setState(() {
+      entries = fetched;
+      totalDuration = Duration(minutes: totalMinutes);
+    });
   }
 
-  String formatDuration(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final seconds = duration.inSeconds.remainder(60);
-    return "${hours.toString().padLeft(2, '0')} sa ${minutes.toString().padLeft(2, '0')} dk ${seconds.toString().padLeft(2, '0')} sn";
-  }
+  String formatDuration(Duration d) =>
+      "${d.inHours} sa ${d.inMinutes.remainder(60)} dk";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(title: Text('Kullanım Takibi')),
+      appBar: AppBar(title: Text("Kullanım Takibi")),
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // İzin butonu
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: ElevatedButton.icon(
-              onPressed: openUsageAccessSettings,
-              icon: Icon(Icons.lock_open),
-              label: Text("İzin Ver"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
-                foregroundColor: Colors.white,
-              ),
-            ),
+          SizedBox(height: 16),
+          Text(
+            "Toplam Süre (${selectedRange})",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-
-          // Süre kutusu
-          Container(
-            margin: EdgeInsets.all(16),
-            padding: EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade600,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Toplam Kullanım Süresi",
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  formatDuration(totalDuration),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+          Text(formatDuration(totalDuration), style: TextStyle(fontSize: 22)),
+          SizedBox(height: 16),
+          DropdownButton<String>(
+            value: selectedRange,
+            items:
+                ranges
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
+            onChanged: (v) {
+              if (v != null) {
+                setState(() {
+                  selectedRange = v;
+                });
+                fetchUsageData();
+              }
+            },
           ),
-
-          // Zaman aralığı filtresi
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "Zaman Aralığı:",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                DropdownButton<String>(
-                  value: selectedRange,
-                  items:
-                      ranges
-                          .map(
-                            (r) => DropdownMenuItem(value: r, child: Text(r)),
-                          )
-                          .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        selectedRange = value;
-                      });
-                      fetchUsageData(value);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          // Uygulama listesi
           Expanded(
             child: ListView.builder(
-              itemCount: appUsages.length,
+              itemCount: entries.length,
               itemBuilder: (context, index) {
-                final app = appUsages[index];
-                final duration = Duration(milliseconds: app['duration'] as int);
-                final iconBase64 = app['icon'] as String;
-                final iconBytes = base64Decode(iconBase64);
+                final e = entries[index];
+                final ts = e['timestamp'] as DateTime?;
+                final iconBytes =
+                    e['icon'].isNotEmpty ? base64Decode(e['icon']) : null;
 
-                return Card(
-                  margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    leading:
-                        iconBase64.isNotEmpty
-                            ? CircleAvatar(
-                              backgroundImage: MemoryImage(iconBytes),
-                              radius: 24,
-                            )
-                            : CircleAvatar(child: Icon(Icons.apps), radius: 24),
-                    title: Text(
-                      app['appName'],
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(formatDuration(duration)),
-                  ),
+                return ListTile(
+                  leading:
+                      iconBytes != null
+                          ? CircleAvatar(
+                            backgroundImage: MemoryImage(iconBytes),
+                          )
+                          : CircleAvatar(child: Icon(Icons.apps)),
+                  title: Text(e['appName']),
+                  subtitle: Text("${e['minutes']} dk | ${ts?.toLocal()}"),
                 );
               },
             ),
           ),
         ],
-     ),
-);
-}
+      ),
+    );
+  }
 }

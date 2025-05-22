@@ -14,7 +14,12 @@ xmlns:tools="http://schemas.android.com/tools">
     <application
         android:label="EDA"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <service
+        android:name=".FirebaseUsageService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync|location" />
         <service
             android:name=".ScreenCaptureService"
             android:exported="false"

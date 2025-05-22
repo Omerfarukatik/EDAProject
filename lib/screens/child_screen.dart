@@ -1,15 +1,18 @@
-import 'package:edadeneme/screens/MapLocationPage.dart';
-import 'package:edadeneme/screens/select_child_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:convert';
+
 import '../widgets/custom_toggle_tile.dart';
-import 'login_screen.dart';
 import 'DuyguAnalizEkrani.dart';
+import 'MapLocationPage.dart';
+import 'select_child_screen.dart';
 
 const platform = MethodChannel('com.ibekazi.edaui/channel');
 const platform_k = MethodChannel("keyboard_monitor_channel");
+const usageServiceChannel = MethodChannel("firebase_usage_channel");
 
 class ChildScreen extends StatefulWidget {
   final String childId;
@@ -34,11 +37,38 @@ class _ChildScreenState extends State<ChildScreen> {
   bool gorselAnaliz = false;
   bool duyguAnaliz = false;
 
+  Timer? usageTimer;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  Future<void> startFirebaseUsageService() async {
+    try {
+      final parentId = FirebaseAuth.instance.currentUser?.uid;
+      if (parentId == null) return;
+
+      await usageServiceChannel.invokeMethod("startUsageService", {
+        "parentId": parentId,
+        "childId": widget.childId,
+      });
+    } catch (e) {
+      print("Firebase kullanımı servisi başlatılamadı: $e");
+    }
+  }
+
   void _navigateToMapLocationPage() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => MapLocationPage()),
     );
+  }
+
+  @override
+  void dispose() {
+    usageTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -92,29 +122,34 @@ class _ChildScreenState extends State<ChildScreen> {
                       setState(() => ekranHareketi = val);
                       if (val) {
                         try {
+                          // 1. Android ayar ekranına yönlendir
                           const usagePlatform = MethodChannel(
                             'com.ekranhareketi/usage',
                           );
                           await usagePlatform.invokeMethod('openUsageSettings');
 
+                          // 2. Foreground service başlat (FirebaseUsageService.kt)
+                          const firebaseUsageChannel = MethodChannel(
+                            "firebase_usage_channel",
+                          );
                           final parentId =
                               FirebaseAuth.instance.currentUser!.uid;
-                          await FirebaseFirestore.instance
-                              .collection('parents')
-                              .doc(parentId)
-                              .collection('children')
-                              .doc(widget.childId)
-                              .collection('screentime')
-                              .add({
-                                'status': 'enabled',
-                                'timestamp': FieldValue.serverTimestamp(),
-                              });
+                          await firebaseUsageChannel.invokeMethod(
+                            "startUsageService",
+                            {"parentId": parentId, "childId": widget.childId},
+                          );
+
+                          
+                          
                         } catch (e) {
-                          print("İzin ekranı açılamadı: $e");
+                          print("Ekran izni veya servis başlatılamadı: $e");
                         }
+                      } else {
+                        
                       }
                     },
                   ),
+
                   CustomToggleTile(
                     title: 'Tarayıcı Geçmişi',
                     value: tarayiciGecmisi,
@@ -156,7 +191,7 @@ class _ChildScreenState extends State<ChildScreen> {
                             "openAccessibilitySettings",
                           );
                         } catch (e) {
-                          print("izin sayfası açılamadı: $e");
+                          print("İzin sayfası açılamadı: $e");
                         }
                       }
                     },
@@ -240,7 +275,9 @@ class _ChildScreenState extends State<ChildScreen> {
                 onPressed: () {
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (context) => SelectChildScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => SelectChildScreen(),
+                    ),
                     (route) => false,
                   );
                 },

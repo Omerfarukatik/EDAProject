@@ -18,6 +18,30 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+
+        //FirebaseUsageService Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "firebase_usage_channel").setMethodCallHandler { call, result ->
+    when (call.method) {
+        "startUsageService" -> {
+            val parentId = call.argument<String>("parentId")
+            val childId = call.argument<String>("childId")
+            if (parentId != null && childId != null) {
+                val intent = Intent(this, FirebaseUsageService::class.java).apply {
+                    putExtra("parentId", parentId)
+                    putExtra("childId", childId)
+                }
+                startForegroundService(intent)
+                result.success(null)
+            } else {
+                result.error("MISSING_ARGS", "parentId veya childId eksik", null)
+            }
+        }
+        else -> result.notImplemented()
+    }
+}
+        
+        
+        
         // 1. Ekran Kaydı Channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

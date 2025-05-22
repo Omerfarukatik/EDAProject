@@ -6,11 +6,13 @@ class ChildDetailScreen extends StatelessWidget {
   final String childName;
   final String avatarPath;
   final String parentUsername;
+  final String childId; // ✅ childId parametresi eklendi
 
   const ChildDetailScreen({
     required this.childName,
     required this.avatarPath,
     required this.parentUsername,
+    required this.childId, // ✅ childId parametresi eklendi
   });
 
   @override
@@ -22,9 +24,9 @@ class ChildDetailScreen extends StatelessWidget {
         'onTap': () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => UsageScreen()),
-   );
-},
+            MaterialPageRoute(builder: (context) => UsageScreen(childId: childId)),
+          );
+        },
       },
       {
         'title': 'Tarayıcı geçmişi',
@@ -89,9 +91,7 @@ class ChildDetailScreen extends StatelessWidget {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder:
-                              (context) =>
-                                  ParentScreen(username: parentUsername),
+                          builder: (context) => ParentScreen(username: parentUsername),
                         ),
                       );
                     },
@@ -168,9 +168,7 @@ class ChildDetailScreen extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: tile['gradient'],
                           image: DecorationImage(
-                            image: AssetImage(
-                              'assets/backgrounds/bg_${index + 1}.png',
-                            ),
+                            image: AssetImage('assets/backgrounds/bg_${index + 1}.png'),
                             fit: BoxFit.cover,
                             colorFilter: ColorFilter.mode(
                               Colors.black.withOpacity(0.15),
