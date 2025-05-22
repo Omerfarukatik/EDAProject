@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/add_child_modal.dart';
@@ -5,7 +7,7 @@ import 'child_detail_screen.dart';
 import 'login_screen.dart';
 
 class ParentScreen extends StatefulWidget {
-  final String username; // Hoşgeldiniz mesajı için
+  final String username;
 
   const ParentScreen({required this.username});
 
@@ -14,11 +16,7 @@ class ParentScreen extends StatefulWidget {
 }
 
 class _ParentScreenState extends State<ParentScreen> {
-  // Şimdilik sabit verilerle çocuk listesi
-  final List<Map<String, String>> children = [
-    {'name': 'Ahmet', 'avatar': 'assets/avatars/boy1.png'},
-    {'name': 'Ada', 'avatar': 'assets/avatars/girl1.png'},
-  ];
+  final currentUser = FirebaseAuth.instance.currentUser;
 
   @override
   Widget build(BuildContext context) {
@@ -27,12 +25,8 @@ class _ParentScreenState extends State<ParentScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.deepPurple.shade100,
         onPressed: () {
-          AddChildModal.show(context, (name, avatar, code, email, password) {
-            setState(() {
-              children.add({'name': name, 'avatar': avatar});
-            });
-
-            // Buraya veritabanı kaydı, Firebase kaydı gibi işlemler ekleyebilirsin.
+          AddChildModal.show(context, (name, avatar, _, __, ___) {
+            // setState() artık gerekmez çünkü veriler Firestore'dan geliyor
           });
         },
         child: Icon(Icons.add, color: Colors.deepPurple),
@@ -63,88 +57,115 @@ class _ParentScreenState extends State<ParentScreen> {
               ),
             ),
             SizedBox(height: 20),
-
-            // Çocuklar listesi başlığı
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.indigo.shade50,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Çocuklar',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 15),
-
-                  // Grid ile çocukları göster
-                  GridView.builder(
-                    shrinkWrap: true,
-                    itemCount: children.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: 0.9,
-                      crossAxisSpacing: 15,
-                      mainAxisSpacing: 15,
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Çocuklar',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    itemBuilder: (context, index) {
-                      final child = children[index];
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => ChildDetailScreen(
-                                    childName: child['name']!,
-                                    avatarPath: child['avatar']!,
-                                    parentUsername: widget.username,
-                                  ),
-                            ),
-                          );
-                          // TODO: Çocuğa özel ekrana yönlendir
-                          print("Tıklandı: ${child['name']}");
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color:
-                                index % 2 == 0
-                                    ? Colors.orangeAccent
-                                    : Colors.deepPurple.shade200,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircleAvatar(
-                                radius: 36,
-                                backgroundImage: AssetImage(child['avatar']!),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                child['name']!,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                    SizedBox(height: 15),
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream:
+                            FirebaseFirestore.instance
+                                .collection('parents')
+                                .doc(currentUser!.uid)
+                                .collection('children')
+                                .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Center(child: CircularProgressIndicator());
+                          }
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return Center(child: Text("Hiç çocuk eklenmemiş."));
+                          }
+
+                          final children = snapshot.data!.docs;
+
+                          return GridView.builder(
+                            itemCount: children.length,
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.9,
+                                  crossAxisSpacing: 15,
+                                  mainAxisSpacing: 15,
                                 ),
-                              ),
-                              SizedBox(height: 5),
-                              Icon(Icons.more_vert, color: Colors.white70),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                            itemBuilder: (context, index) {
+                              final child = children[index];
+                              final name = child['name'];
+                              final avatar = child['avatar'];
+
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => ChildDetailScreen(
+                                            childName: name,
+                                            avatarPath: avatar,
+                                            parentUsername: widget.username,
+                                          ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        index % 2 == 0
+                                            ? Colors.orangeAccent
+                                            : Colors.deepPurple.shade200,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 36,
+                                        backgroundImage: AssetImage(avatar),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      SizedBox(height: 5),
+                                      Icon(
+                                        Icons.more_vert,
+                                        color: Colors.white70,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            // 🔓 Çıkış Butonu
             Align(
               alignment: Alignment.topRight,
               child: IconButton(

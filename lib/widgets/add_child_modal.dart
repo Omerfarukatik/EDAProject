@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AddChildModal {
   static void show(
@@ -119,22 +121,62 @@ class AddChildModal {
                     SizedBox(height: 20),
                     Center(
                       child: ElevatedButton(
-                        onPressed: () {
-                          final String id =
-                              DateTime.now().millisecondsSinceEpoch.toString();
-                          if (_nameController.text.isNotEmpty &&
-                              _emailController.text.isNotEmpty &&
-                              _passwordController.text.isNotEmpty) {
-                            onChildAdded(
-                              id,
-                              _nameController.text,
-                              selectedAvatar,
-                              _emailController.text,
-                              _passwordController.text,
+                        onPressed: () async {
+                          final currentUser = FirebaseAuth.instance.currentUser;
+                          if (currentUser == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Oturum açmış bir ebeveyn bulunamadı.',
+                                ),
+                              ),
                             );
+                            return;
+                          }
+
+                          final String name = _nameController.text.trim();
+                          final String email = _emailController.text.trim();
+                          final String password =
+                              _passwordController.text.trim();
+
+                          if (name.isEmpty ||
+                              email.isEmpty ||
+                              password.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Lütfen tüm alanları doldurun'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          try {
+                            // Firestore'a çocuk ekle
+                            await FirebaseFirestore.instance
+                                .collection('parents')
+                                .doc(currentUser.uid)
+                                .collection('children')
+                                .add({
+                                  'name': name,
+                                  'email': email,
+                                  'avatar': selectedAvatar,
+                                  'created_at': FieldValue.serverTimestamp(),
+                                });
+
                             Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Çocuk başarıyla eklendi'),
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Hata oluştu: $e')),
+                            );
                           }
                         },
+
                         child: Text('Ekle'),
                       ),
                     ),

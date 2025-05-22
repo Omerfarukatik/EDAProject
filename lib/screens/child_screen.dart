@@ -1,8 +1,10 @@
 import 'package:edadeneme/screens/MapLocationPage.dart';
+import 'package:edadeneme/screens/select_child_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/custom_toggle_tile.dart';
-import '../widgets/qr_code_modal.dart';
 import 'login_screen.dart';
 import 'DuyguAnalizEkrani.dart';
 
@@ -10,33 +12,38 @@ const platform = MethodChannel('com.ibekazi.edaui/channel');
 const platform_k = MethodChannel("keyboard_monitor_channel");
 
 class ChildScreen extends StatefulWidget {
+  final String childId;
+  final String childName;
+  final String avatarPath;
+
+  const ChildScreen({
+    Key? key,
+    required this.childId,
+    required this.childName,
+    required this.avatarPath,
+  }) : super(key: key);
+
   @override
   _ChildScreenState createState() => _ChildScreenState();
 }
 
 class _ChildScreenState extends State<ChildScreen> {
-  // Özellikler için toggle durumları
   bool ekranHareketi = false;
   bool tarayiciGecmisi = false;
   bool konumTakibi = false;
   bool gorselAnaliz = false;
   bool duyguAnaliz = false;
-void _navigateToMapLocationPage() {
+
+  void _navigateToMapLocationPage() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => MapLocationPage()),
-);
-}
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          QrCodeModal.show(context);
-        },
-        backgroundColor: Colors.deepPurple,
-        child: Icon(Icons.add, color: Colors.white),
-      ),
       body: SafeArea(
         child: Stack(
           children: [
@@ -44,7 +51,6 @@ void _navigateToMapLocationPage() {
               padding: EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // Başlık
                   Text(
                     'E D A\n(Çocuk)',
                     textAlign: TextAlign.center,
@@ -56,6 +62,20 @@ void _navigateToMapLocationPage() {
                     ),
                   ),
                   SizedBox(height: 10),
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundImage: AssetImage(widget.avatarPath),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    widget.childName,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo,
+                    ),
+                  ),
+                  SizedBox(height: 20),
                   Text(
                     'Özellikler',
                     style: TextStyle(
@@ -65,23 +85,35 @@ void _navigateToMapLocationPage() {
                     ),
                   ),
                   SizedBox(height: 20),
-
-                  // Özellik kartları
                   CustomToggleTile(
                     title: 'Ekran Hareketi ve Süresi',
                     value: ekranHareketi,
                     onChanged: (val) async {
-    setState(() => ekranHareketi = val);
-    if (val) {
-      try {
-        // Android ayarlarına yönlendir
-        const usagePlatform = MethodChannel('com.ekranhareketi/usage');
-        await usagePlatform.invokeMethod('openUsageSettings');
-      } catch (e) {
-        print("İzin ekranı açılamadı: $e");
-}
-}
-},
+                      setState(() => ekranHareketi = val);
+                      if (val) {
+                        try {
+                          const usagePlatform = MethodChannel(
+                            'com.ekranhareketi/usage',
+                          );
+                          await usagePlatform.invokeMethod('openUsageSettings');
+
+                          final parentId =
+                              FirebaseAuth.instance.currentUser!.uid;
+                          await FirebaseFirestore.instance
+                              .collection('parents')
+                              .doc(parentId)
+                              .collection('children')
+                              .doc(widget.childId)
+                              .collection('screentime')
+                              .add({
+                                'status': 'enabled',
+                                'timestamp': FieldValue.serverTimestamp(),
+                              });
+                        } catch (e) {
+                          print("İzin ekranı açılamadı: $e");
+                        }
+                      }
+                    },
                   ),
                   CustomToggleTile(
                     title: 'Tarayıcı Geçmişi',
@@ -116,35 +148,36 @@ void _navigateToMapLocationPage() {
                   CustomToggleTile(
                     title: 'Duygu Analizi',
                     value: duyguAnaliz,
-                    onChanged: (val) async { setState(() => duyguAnaliz = val);
-                    if (val) {
-                      try {
-                        await platform_k.invokeMethod("openAccessibilitySettings");
-                      } catch (e) {
-                        print("izin sayfasi acilamadi.: $e");
+                    onChanged: (val) async {
+                      setState(() => duyguAnaliz = val);
+                      if (val) {
+                        try {
+                          await platform_k.invokeMethod(
+                            "openAccessibilitySettings",
+                          );
+                        } catch (e) {
+                          print("izin sayfası açılamadı: $e");
+                        }
                       }
-                    }
-                      },
+                    },
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => DuyguAnalizEkrani()),
+                        MaterialPageRoute(
+                          builder: (context) => DuyguAnalizEkrani(),
+                        ),
                       );
                     },
                     child: Text("Duygu Analizi Sayfasına Git"),
                   ),
-
                   ElevatedButton(
-              onPressed: _navigateToMapLocationPage,
-              child: Text("Konum Sayfasına Git"),
-),
-
+                    onPressed: _navigateToMapLocationPage,
+                    child: Text("Konum Sayfasına Git"),
+                  ),
                   Spacer(),
-
-                  // Gizle & Durdur butonları
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -158,8 +191,13 @@ void _navigateToMapLocationPage() {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.redAccent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          padding: EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 30,
+                            vertical: 20,
+                          ),
                         ),
                         child: Text(
                           'Gizle',
@@ -177,8 +215,13 @@ void _navigateToMapLocationPage() {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.grey[800],
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          padding: EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 30,
+                            vertical: 20,
+                          ),
                         ),
                         child: Text(
                           'Durdur',
@@ -190,8 +233,6 @@ void _navigateToMapLocationPage() {
                 ],
               ),
             ),
-
-            // Çıkış Butonu (sağ üst köşe)
             Align(
               alignment: Alignment.topRight,
               child: IconButton(
@@ -199,7 +240,7 @@ void _navigateToMapLocationPage() {
                 onPressed: () {
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                    MaterialPageRoute(builder: (context) => SelectChildScreen()),
                     (route) => false,
                   );
                 },

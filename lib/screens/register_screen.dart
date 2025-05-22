@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/custom_textfield.dart';
 import 'login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -106,11 +107,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onTap: () async {
                     if (_formKey.currentState!.validate()) {
                       try {
-                        await FirebaseAuth.instance
+                        // Firebase Auth ile kullanıcı oluştur
+                        final credential = await FirebaseAuth.instance
                             .createUserWithEmailAndPassword(
                               email: _emailController.text.trim(),
                               password: _passwordController.text.trim(),
                             );
+
+                        final uid = credential.user!.uid;
+
+                        // Firestore'da parents/{uid} belgesini oluştur
+                        await FirebaseFirestore.instance
+                            .collection('parents')
+                            .doc(uid)
+                            .set({
+                              'name': _usernameController.text.trim(),
+                              'email': _emailController.text.trim(),
+                              'phone': _phoneController.text.trim(),
+                              'created_at': FieldValue.serverTimestamp(),
+                            });
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(

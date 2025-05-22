@@ -3,6 +3,7 @@ import 'register_screen.dart';
 import '../widgets/custom_textfield.dart';
 import 'parent_screen.dart';
 import 'child_screen.dart';
+import 'select_child_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -141,7 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => ChildScreen(),
+                            builder: (context) => SelectChildScreen(),
                           ),
                         );
                       },
