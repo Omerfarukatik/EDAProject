@@ -2,7 +2,9 @@ import 'package:edadeneme/screens/image_analysis_screen.dart';
 import 'package:edadeneme/screens/usage_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'LocationParentSide.dart';
 import 'parent_screen.dart';
+import 'sentimentParentSide.dart';
 
 class ChildDetailScreen extends StatelessWidget {
   final String childName;
@@ -38,7 +40,17 @@ class ChildDetailScreen extends StatelessWidget {
       {
         'title': 'Duygu Analizi',
         'gradient': LinearGradient(colors: [Colors.orange, Colors.deepOrange]),
-        'onTap': () {},
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SentimentParentSide(
+                parentId: FirebaseAuth.instance.currentUser!.uid, // ← Bunu dinamik yapmayı unutma
+                childId: childId,   // ← Bunu da güncelle
+              ),
+            ),
+          );
+        },
       },
       {
   'title': 'Görsel Analiz',
@@ -57,13 +69,19 @@ class ChildDetailScreen extends StatelessWidget {
     );
   },
 },
-
       {
         'title': 'Konum Takibi',
         'gradient': LinearGradient(
           colors: [Colors.green.shade700, Colors.green.shade300],
         ),
-        'onTap': () {},
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LocationParentSide(childId: childId),
+            ),
+          );
+        },
       },
     ];
 

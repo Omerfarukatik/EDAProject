@@ -6,9 +6,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../widgets/custom_toggle_tile.dart';
-import 'DuyguAnalizEkrani.dart';
 import 'MapLocationPage.dart';
 import 'select_child_screen.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 const platform = MethodChannel('com.ibekazi.edaui/channel');
 const platform_k = MethodChannel("keyboard_monitor_channel");
@@ -38,10 +39,101 @@ class _ChildScreenState extends State<ChildScreen> {
   bool duyguAnaliz = false;
 
   Timer? usageTimer;
+  LatLng? _currentLatLng;
+  Timer? _locationTimer;
+
+  // klavye girdisi için:
+  String _keyboardLog = "";
+  String _buffer = "";
+  int _wordCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _initKeyboardCapture();
+    _fetchAndSendLocation(); // Konumu al ve Firestore'a gönder
+  }
+
+  Future<void> _fetchAndSendLocation() async {
+    try {
+      final permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Konum izni verilmedi")));
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final newLatLng = LatLng(position.latitude, position.longitude);
+
+      setState(() {
+        _currentLatLng = newLatLng;
+      });
+
+      final parentId = FirebaseAuth.instance.currentUser?.uid;
+      if (parentId == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('parents')
+          .doc(parentId)
+          .collection('children')
+          .doc(widget.childId)
+          .collection('location')
+          .add({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      print('Konum başarıyla gönderildi.');
+    } catch (e) {
+      print("Konum alınamadı veya Firestore'a gönderilemedi: $e");
+    }
+  }
+
+  void _initKeyboardCapture() {
+    platform_k.setMethodCallHandler((call) async {
+      if (call.method == "onTextCaptured") {
+        final newChar = call.arguments.toString();
+
+        setState(() {
+          _keyboardLog += newChar;
+          _buffer += newChar;
+          print("buffer: $_buffer");
+          print("wordCount: $_wordCount");
+        });
+
+        // Kelime sayımı
+        if (newChar == " ") {
+          _wordCount++;
+        }
+
+        // Her 10 kelimede bir Firestore'a gönder
+        if (_wordCount >= 10) {
+          final parentId = FirebaseAuth.instance.currentUser?.uid;
+          if (parentId == null) return;
+
+          final cleanedText = _buffer.trim();
+
+          try {
+            await FirebaseFirestore.instance
+                .collection("parents")
+                .doc(parentId)
+                .collection("children")
+                .doc(widget.childId)
+                .collection("sentiment")
+                .add({
+              "text": cleanedText,
+              "timestamp": FieldValue.serverTimestamp(),
+            });
+
+            // Gönderimden sonra sıfırla
+            _buffer = "";
+            _wordCount = 0;
+          } catch (e) {
+            print("Firebase'e gönderme hatası: $e");
+          }
+        }
+      }
+    });
   }
 
   Future<void> startFirebaseUsageService() async {
@@ -58,12 +150,7 @@ class _ChildScreenState extends State<ChildScreen> {
     }
   }
 
-  void _navigateToMapLocationPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => MapLocationPage()),
-    );
-  }
+
 
   @override
   void dispose() {
@@ -158,7 +245,22 @@ class _ChildScreenState extends State<ChildScreen> {
                   CustomToggleTile(
                     title: 'Konum Takibi',
                     value: konumTakibi,
-                    onChanged: (val) => setState(() => konumTakibi = val),
+                    onChanged: (val) async {
+                      setState(() => konumTakibi = val);
+                      if (val) {
+                        await _fetchAndSendLocation(); // konumu al ve Firestore'a gönder
+
+                        // Her 5 dakikada bir konumu gönder (300 saniye)
+                        _locationTimer = Timer.periodic(Duration(minutes: 5), (timer) async {
+                          await _fetchAndSendLocation();
+                        });
+                      }
+                      else {
+                        // Toggle kapatılırsa timer'ı durdur
+                        _locationTimer?.cancel();
+                        _locationTimer = null;
+                      }
+                    },
                   ),
                   CustomToggleTile(
   title: 'Görsel Analiz',
@@ -203,21 +305,7 @@ class _ChildScreenState extends State<ChildScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DuyguAnalizEkrani(),
-                        ),
-                      );
-                    },
-                    child: Text("Duygu Analizi Sayfasına Git"),
-                  ),
-                  ElevatedButton(
-                    onPressed: _navigateToMapLocationPage,
-                    child: Text("Konum Sayfasına Git"),
-                  ),
+
                   Spacer(),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
