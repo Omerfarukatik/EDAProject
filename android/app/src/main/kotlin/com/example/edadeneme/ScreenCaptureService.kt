@@ -1,31 +1,30 @@
 package com.example.edadeneme
+
 import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
-import android.media.MediaScannerConnection
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Build
-import android.os.Environment
+import android.os.*
 import android.util.DisplayMetrics
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.ktx.storage
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.FieldValue
 import org.tensorflow.lite.Interpreter
-import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStream
+import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
 import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
-import java.io.FileInputStream
-import android.hardware.display.DisplayManager
 import android.view.WindowManager
-import android.os.IBinder
 
 class ScreenCaptureService : Service() {
 
@@ -34,9 +33,12 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private lateinit var tflite: Interpreter
-
-    private val SCREENSHOT_INTERVAL_MS = 5000L // 5 saniyede bir
     private val timer = Timer()
+
+    private val SCREENSHOT_INTERVAL_MS = 20000L // 20 saniye
+
+    private var parentId: String = ""
+    private var childId: String = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -44,31 +46,33 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         startForegroundService()
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        tflite = Interpreter(loadModelFile()) // Model dosyasını yükle
+        tflite = Interpreter(loadModelFile())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val resultCode = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: return START_NOT_STICKY
         val data = intent.getParcelableExtra<Intent>("data") ?: return START_NOT_STICKY
 
+        parentId = intent.getStringExtra("parentId") ?: return START_NOT_STICKY
+        childId = intent.getStringExtra("childId") ?: return START_NOT_STICKY
+
         mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
 
         mediaProjection?.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
-                super.onStop()
-                Log.d("ScreenCaptureService", "MediaProjection stopped.")
                 stopSelf()
             }
         }, null)
 
         startScreenCapture()
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun startScreenCapture() {
         val metrics = DisplayMetrics()
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         wm.defaultDisplay.getRealMetrics(metrics)
+
         val screenDensity = metrics.densityDpi
         val screenWidth = metrics.widthPixels
         val screenHeight = metrics.heightPixels
@@ -86,7 +90,6 @@ class ScreenCaptureService : Service() {
             null
         )
 
-        // Ekran görüntüsünü periyodik al
         timer.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 takeScreenshot()
@@ -110,50 +113,60 @@ class ScreenCaptureService : Service() {
         bitmap.copyPixelsFromBuffer(buffer)
         image.close()
 
-        // NSFW ANALİZİ YAP
-        if (isSafeContent(bitmap)) {
-            Log.d("Screenshot", "SAFE içerik. Kayıt yapılmadı.")
-            return // SAFE içerikse kaydetmeden çık
-        }
+        val (isSafe, predictedPair) = isSafeContent(bitmap)
+        if (isSafe) return
 
-        val now = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "screenshot_$now.png"
+        val predictedClass = predictedPair.first
+        val confidence = predictedPair.second
 
-        val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-        val file = File(picturesDir, fileName)
+        val timestamp = System.currentTimeMillis()
+        val fileName = "screenshot_$timestamp.png"
 
-        try {
-            val outputStream: OutputStream = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            outputStream.flush()
-            outputStream.close()
+        uploadToFirebase(bitmap, fileName, timestamp, predictedClass, confidence)
+    }
 
-            // Galeriye bildir
-            MediaScannerConnection.scanFile(
-                applicationContext,
-                arrayOf(file.absolutePath),
-                arrayOf("image/png"),
-                null
-            )
+    private fun uploadToFirebase(bitmap: Bitmap, fileName: String, timestamp: Long, predictedClass: String, confidence: Float) {
+        val firestore = Firebase.firestore
+        val storageRef = Firebase.storage.reference
+            .child("imageAnalysis/$parentId/$childId/$fileName")
 
-            Log.d("Screenshot", "NSFW içerik kaydedildi: ${file.absolutePath}")
-        } catch (e: Exception) {
-            Log.e("Screenshot", "Kaydedilemedi: ${e.message}")
-        }
+        val baos = ByteArrayOutputStream()
+        val resized = Bitmap.createScaledBitmap(bitmap, 540, 960, true)
+    resized.compress(Bitmap.CompressFormat.JPEG, 50, baos)
+        val data = baos.toByteArray()
+
+        storageRef.putBytes(data)
+            .addOnSuccessListener {
+                storageRef.downloadUrl.addOnSuccessListener { uri ->
+                    val entry = mapOf(
+                        "image" to uri.toString(),
+                        "result" to predictedClass,
+                        "confidence" to confidence,
+                        "timestamp" to FieldValue.serverTimestamp()
+                    )
+                    firestore.collection("parents")
+                        .document(parentId)
+                        .collection("children")
+                        .document(childId)
+                        .collection("imageAnalysis")
+                        .add(entry)
+                    Log.d("NSFW", "Firestore'a kaydedildi: $predictedClass ($confidence)")
+                }
+            }
+            .addOnFailureListener {
+                Log.e("Firebase", "Yükleme hatası", it)
+            }
     }
 
     private fun loadModelFile(): MappedByteBuffer {
         val fileDescriptor = assets.openFd("saved_model.tflite")
         val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
         val fileChannel = inputStream.channel
-        val startOffset = fileDescriptor.startOffset
-        val declaredLength = fileDescriptor.declaredLength
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
     }
 
-    private fun isSafeContent(bitmap: Bitmap): Boolean {
+    private fun isSafeContent(bitmap: Bitmap): Pair<Boolean, Pair<String, Float>> {
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, true)
-
         val input = Array(1) { Array(224) { Array(224) { FloatArray(3) } } }
         for (y in 0 until 224) {
             for (x in 0 until 224) {
@@ -166,47 +179,44 @@ class ScreenCaptureService : Service() {
 
         val output = Array(1) { FloatArray(5) }
         tflite.run(input, output)
-        val scores = output[0]
 
         val classes = listOf("drawings", "hentai", "neutral", "porn", "sexy")
-        val maxScore = scores.maxOrNull() ?: 0f
-        val maxIndex = scores.indexOfFirst { it == maxScore }
-        val detectedClass = classes[maxIndex]
+        val maxScore = output[0].maxOrNull() ?: 0f
+        val predictedIndex = output[0].indexOfFirst { it == maxScore }
+        val predicted = classes[predictedIndex]
 
-        Log.d("NSFWAnalysis", "Tahmin edilen sınıf: $detectedClass, Skor: $maxScore")
+        Log.d("NSFW", "Predicted: $predicted - Score: $maxScore")
 
-        return detectedClass == "neutral" || detectedClass == "drawings"
+        val isSafe = predicted == "neutral" || predicted == "drawings" || maxScore < 0.6f
+        return Pair(isSafe, Pair(predicted, maxScore))
     }
 
-    private fun startForegroundService() {
-        val channelId = "ScreenCaptureChannel"
-        val channelName = "Ekran Kaydı Servisi"
+private fun startForegroundService() {
+    val channelId = "ScreenCaptureChannel"
+    val channelName = "Ekran Kaydı Servisi"
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                channelName,
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Ekran görüntüsü alınıyor"
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            }
-            notificationManager.createNotificationChannel(channel)
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+            channelId,
+            channelName,
+            NotificationManager.IMPORTANCE_MIN // Mümkün olan en düşük görünürlük
+        ).apply {
+            setShowBadge(false)
+            lockscreenVisibility = Notification.VISIBILITY_SECRET
         }
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Ekran kaydı aktif")
-            .setContentText("🟢 Ekran görüntüsü alınıyor...")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .build()
-
-        startForeground(1, notification)
+        manager.createNotificationChannel(channel)
     }
+
+    val notification = NotificationCompat.Builder(this, channelId)
+        .setSmallIcon(android.R.drawable.stat_notify_more) // ✅ Sadece simge (dilersen değiştir)
+        .setPriority(NotificationCompat.PRIORITY_MIN) // Sessiz
+        .setOngoing(true)
+        .build()
+
+    startForeground(1, notification)
+}
+
 
     override fun onDestroy() {
         super.onDestroy()
@@ -214,6 +224,5 @@ class ScreenCaptureService : Service() {
         imageReader?.close()
         mediaProjection?.stop()
         timer.cancel()
-        Log.d("ScreenCaptureService", "MediaProjection durdu.")
     }
 }

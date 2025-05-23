@@ -1,4 +1,6 @@
+import 'package:edadeneme/screens/image_analysis_screen.dart';
 import 'package:edadeneme/screens/usage_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'parent_screen.dart';
 
@@ -39,12 +41,23 @@ class ChildDetailScreen extends StatelessWidget {
         'onTap': () {},
       },
       {
-        'title': 'Görsel Analiz',
-        'gradient': LinearGradient(
-          colors: [Colors.amber, Colors.grey.shade300],
+  'title': 'Görsel Analiz',
+  'gradient': LinearGradient(
+    colors: [Colors.amber, Colors.grey.shade300],
+  ),
+  'onTap': () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImageAnalysisScreen(
+          parentId: FirebaseAuth.instance.currentUser!.uid, // 🟩 parentId buradan alınıyor
+          childId: childId, // 🟩 bu zaten yukarıdan geliyor
         ),
-        'onTap': () {},
-      },
+      ),
+    );
+  },
+},
+
       {
         'title': 'Konum Takibi',
         'gradient': LinearGradient(

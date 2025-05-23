@@ -161,25 +161,31 @@ class _ChildScreenState extends State<ChildScreen> {
                     onChanged: (val) => setState(() => konumTakibi = val),
                   ),
                   CustomToggleTile(
-                    title: 'Görsel Analiz',
-                    value: gorselAnaliz,
-                    onChanged: (val) async {
-                      setState(() => gorselAnaliz = val);
-                      if (val) {
-                        try {
-                          await platform.invokeMethod('startProjection');
-                        } catch (e) {
-                          print("Servis başlatılamadı: $e");
-                        }
-                      } else {
-                        try {
-                          await platform.invokeMethod('stopService');
-                        } catch (e) {
-                          print("Servis durdurulamadı: $e");
-                        }
-                      }
-                    },
-                  ),
+  title: 'Görsel Analiz',
+  value: gorselAnaliz,
+  onChanged: (val) async {
+    setState(() => gorselAnaliz = val);
+    if (val) {
+      try {
+        final parentId = FirebaseAuth.instance.currentUser?.uid;
+        if (parentId != null) {
+          await platform.invokeMethod('startProjection', {
+            'parentId': parentId,
+            'childId': widget.childId,
+          });
+        }
+      } catch (e) {
+        print("Servis başlatılamadı: $e");
+      }
+    } else {
+      try {
+        await platform.invokeMethod('stopService');
+      } catch (e) {
+        print("Servis durdurulamadı: $e");
+      }
+    }
+  },
+),
                   CustomToggleTile(
                     title: 'Duygu Analizi',
                     value: duyguAnaliz,
@@ -241,28 +247,32 @@ class _ChildScreenState extends State<ChildScreen> {
                       ),
                       SizedBox(width: 20),
                       ElevatedButton(
-                        onPressed: () async {
-                          try {
-                            await platform.invokeMethod('stopService');
-                          } catch (e) {
-                            print("Servis durdurulamadı: $e");
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey[800],
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 30,
-                            vertical: 20,
-                          ),
-                        ),
-                        child: Text(
-                          'Durdur',
-                          style: TextStyle(fontSize: 18, color: Colors.white),
-                        ),
-                      ),
+  onPressed: () async {
+    try {
+      await platform.invokeMethod('stopService');
+      setState(() {
+        gorselAnaliz = false; // ✅ toggle'ı manuel olarak kapat
+      });
+    } catch (e) {
+      print("Servis durdurulamadı: $e");
+    }
+  },
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.grey[800],
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(30),
+    ),
+    padding: EdgeInsets.symmetric(
+      horizontal: 30,
+      vertical: 20,
+    ),
+  ),
+  child: Text(
+    'Durdur',
+    style: TextStyle(fontSize: 18, color: Colors.white),
+  ),
+),
+
                     ],
                   ),
                 ],
